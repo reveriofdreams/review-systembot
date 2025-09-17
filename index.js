@@ -289,15 +289,15 @@ const handleButtonInteraction = async (interaction) => {
     
     if (customId.startsWith('rating_')) {
         const rating = parseInt(customId.split('_')[1]);
-        const userId = interaction.user.id;
+        const sessionKey = `${interaction.guild.id}:${interaction.user.id}`;
         
         // Store rating in active review session
-        if (!client.activeReviews.has(userId)) {
-            client.activeReviews.set(userId, {});
+        if (!client.activeReviews.has(sessionKey)) {
+            client.activeReviews.set(sessionKey, {});
         }
-        client.activeReviews.get(userId).rating = rating;
-        client.activeReviews.get(userId).guildId = interaction.guild.id;
-        client.activeReviews.get(userId).userName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
+        client.activeReviews.get(sessionKey).rating = rating;
+        client.activeReviews.get(sessionKey).guildId = interaction.guild.id;
+        client.activeReviews.get(sessionKey).userName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
         
         // Update embed to comment step
         const embed = await createReviewEmbed(interaction.guild.id, ReviewSteps.COMMENT, { rating });
@@ -402,8 +402,8 @@ const handleSelectMenuInteraction = async (interaction) => {
         const products = JSON.parse(settings.products || '[]');
         const product = products[productIndex];
         
-        const userId = interaction.user.id;
-        const reviewData = client.activeReviews.get(userId);
+        const sessionKey = `${interaction.guild.id}:${interaction.user.id}`;
+        const reviewData = client.activeReviews.get(sessionKey);
         
         if (!reviewData) {
             return interaction.reply({ content: 'Review session expired. Please start over with /reviewmenu', ephemeral: true });
@@ -415,7 +415,7 @@ const handleSelectMenuInteraction = async (interaction) => {
         await submitReview(interaction, reviewData);
         
         // Clean up active review
-        client.activeReviews.delete(userId);
+        client.activeReviews.delete(sessionKey);
     }
 };
 
@@ -423,8 +423,8 @@ const handleSelectMenuInteraction = async (interaction) => {
 const handleModalSubmit = async (interaction) => {
     if (interaction.customId === 'comment_modal') {
         const comment = interaction.fields.getTextInputValue('comment_text');
-        const userId = interaction.user.id;
-        const reviewData = client.activeReviews.get(userId);
+        const sessionKey = `${interaction.guild.id}:${interaction.user.id}`;
+        const reviewData = client.activeReviews.get(sessionKey);
         
         if (!reviewData) {
             return interaction.reply({ content: 'Review session expired. Please start over with /reviewmenu', ephemeral: true });
@@ -512,7 +512,10 @@ const submitReview = async (interaction, reviewData) => {
                     .setTimestamp()
                     .setFooter({ text: `Review ID: ${review.id}` });
                 
-                await reviewChannel.send({ embeds: [reviewEmbed] });
+                await reviewChannel.send({ 
+                    embeds: [reviewEmbed], 
+                    allowedMentions: { parse: [] } 
+                });
             }
         }
         
