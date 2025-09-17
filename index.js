@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder, PermissionsBitField } = require('discord.js');
 const { db, sql, reviews, settings, initDatabase, getSettings, updateSettings, saveReview } = require('./database');
 
 // Bot setup
@@ -17,17 +17,28 @@ client.activeReviews = new Collection(); // Store active review sessions
 // Helper function to check if user is admin
 const isAdmin = async (interaction) => {
     const settings = await getSettings(interaction.guild.id);
-    const member = interaction.member;
     
-    // Check if user has administrator permission or manage_guild permission
-    if (member.permissions.has('Administrator') || member.permissions.has('ManageGuild')) {
+    // Check if user has administrator permission or manage_guild permission using memberPermissions
+    if (interaction.memberPermissions && (
+        interaction.memberPermissions.has(PermissionsBitField.Flags.Administrator) || 
+        interaction.memberPermissions.has(PermissionsBitField.Flags.ManageGuild)
+    )) {
         return true;
     }
     
     // Check custom admin roles if configured
     const adminRoles = JSON.parse(settings.admin_roles || '[]');
     if (adminRoles.length > 0) {
-        return adminRoles.some(roleId => member.roles.cache.has(roleId));
+        // Handle different member types based on whether guild is cached
+        if (interaction.member) {
+            if (interaction.member.roles && interaction.member.roles.cache) {
+                // Cached guild member
+                return adminRoles.some(roleId => interaction.member.roles.cache.has(roleId));
+            } else if (Array.isArray(interaction.member.roles)) {
+                // API interaction guild member (uncached)
+                return adminRoles.some(roleId => interaction.member.roles.includes(roleId));
+            }
+        }
     }
     
     return false;
@@ -74,7 +85,7 @@ const createReviewEmbed = async (guildId, step = ReviewSteps.RATING, reviewData 
 
     switch (step) {
         case ReviewSteps.RATING:
-            embed.setDescription('**Step 1 of 3:** Please select your rating\n\nHow would you rate your experience?');
+            embed.setDescription(`**Step 1 of 3:** Please select your rating\n\n${settings.embed_description}`);
             break;
         case ReviewSteps.COMMENT:
             embed.setDescription(`**Step 2 of 3:** Leave your comment\n\n★ **Rating:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n\nPlease click the button below to leave your detailed comment.`);
@@ -191,7 +202,7 @@ client.once('ready', async () => {
 // Interaction handling
 client.on('interactionCreate', async (interaction) => {
     try {
-        if (interaction.isCommand()) {
+        if (interaction.isChatInputCommand()) {
             await handleSlashCommand(interaction);
         } else if (interaction.isButton()) {
             await handleButtonInteraction(interaction);
@@ -220,7 +231,7 @@ const handleSlashCommand = async (interaction) => {
             await interaction.reply({
                 embeds: [embed],
                 components: [actionRow],
-                ephemeral: false
+                ephemeral: true
             });
             break;
             
@@ -286,7 +297,7 @@ const handleButtonInteraction = async (interaction) => {
         }
         client.activeReviews.get(userId).rating = rating;
         client.activeReviews.get(userId).guildId = interaction.guild.id;
-        client.activeReviews.get(userId).userName = interaction.user.displayName;
+        client.activeReviews.get(userId).userName = interaction.member?.displayName || interaction.user.globalName || interaction.user.username;
         
         // Update embed to comment step
         const embed = await createReviewEmbed(interaction.guild.id, ReviewSteps.COMMENT, { rating });
@@ -421,13 +432,14 @@ const handleModalSubmit = async (interaction) => {
         
         reviewData.comment = comment;
         
-        // Update embed to product selection step
+        // Reply to modal with product selection step
         const embed = await createReviewEmbed(interaction.guild.id, ReviewSteps.PRODUCT, reviewData);
         const actionRow = await createActionRow(interaction.guild.id, ReviewSteps.PRODUCT);
         
-        await interaction.update({
+        await interaction.reply({
             embeds: [embed],
-            components: actionRow ? [actionRow] : []
+            components: actionRow ? [actionRow] : [],
+            ephemeral: true
         });
     }
     

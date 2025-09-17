@@ -117,17 +117,24 @@ const getSettings = async (guildId) => {
 
 const updateSettings = async (guildId, updates) => {
     try {
-        // Build update clause for the SQL query
-        const updatePairs = Object.entries(updates).map(([key, value]) => `${key} = '${value}'`).join(', ');
+        // Whitelist allowed keys for defense-in-depth
+        const allowedKeys = ['embed_title', 'embed_description', 'embed_color', 'products', 'review_channel_id', 'admin_roles'];
+        const filteredUpdates = {};
         
-        if (updatePairs) {
-            await sql`
-                INSERT INTO settings (guild_id, ${sql(Object.keys(updates))}) 
-                VALUES (${guildId}, ${sql(Object.values(updates))})
-                ON CONFLICT (guild_id) 
-                DO UPDATE SET ${sql.unsafe(updatePairs)}, updated_at = CURRENT_TIMESTAMP
-            `;
+        for (const [key, value] of Object.entries(updates)) {
+            if (allowedKeys.includes(key)) {
+                filteredUpdates[key] = value;
+            }
         }
+        
+        if (Object.keys(filteredUpdates).length === 0) return true;
+        
+        // Use postgres-js object-based helpers for clean UPSERT without manual string construction
+        await sql`
+            INSERT INTO settings ${sql({ guild_id: String(guildId), ...filteredUpdates })}
+            ON CONFLICT (guild_id) 
+            DO UPDATE SET ${sql(filteredUpdates)}, updated_at = CURRENT_TIMESTAMP
+        `;
         
         return true;
     } catch (error) {
