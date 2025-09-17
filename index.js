@@ -1,13 +1,11 @@
 const { Client, GatewayIntentBits, Collection, REST, Routes, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, StringSelectMenuOptionBuilder } = require('discord.js');
-const mongoose = require('mongoose');
+const { db, sql, reviews, settings, initDatabase, getSettings, updateSettings, saveReview } = require('./database');
 
 // Bot setup
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMessages
     ]
 });
 
@@ -15,47 +13,10 @@ const client = new Client({
 client.commands = new Collection();
 client.activeReviews = new Collection(); // Store active review sessions
 
-// MongoDB connection
-const connectDB = async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/discord-reviews', {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
-        console.log('MongoDB connected successfully');
-    } catch (error) {
-        console.error('MongoDB connection error:', error);
-        process.exit(1);
-    }
-};
-
-// MongoDB Schemas
-const reviewSchema = new mongoose.Schema({
-    userId: { type: String, required: true },
-    userName: { type: String, required: true },
-    guildId: { type: String, required: true },
-    rating: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, required: true },
-    product: { type: String, required: true },
-    timestamp: { type: Date, default: Date.now }
-});
-
-const settingsSchema = new mongoose.Schema({
-    guildId: { type: String, required: true, unique: true },
-    reviewChannelId: { type: String },
-    embedColor: { type: String, default: '#3498db' },
-    embedTitle: { type: String, default: 'Review System' },
-    embedDescription: { type: String, default: 'Please complete all steps to submit your review.' },
-    products: [{ type: String }],
-    adminRoles: [{ type: String }]
-});
-
-const Review = mongoose.model('Review', reviewSchema);
-const Settings = mongoose.model('Settings', settingsSchema);
 
 // Helper function to check if user is admin
 const isAdmin = async (interaction) => {
-    const settings = await Settings.findOne({ guildId: interaction.guild.id });
+    const settings = await getSettings(interaction.guild.id);
     const member = interaction.member;
     
     // Check if user has administrator permission or manage_guild permission
@@ -64,8 +25,9 @@ const isAdmin = async (interaction) => {
     }
     
     // Check custom admin roles if configured
-    if (settings && settings.adminRoles.length > 0) {
-        return settings.adminRoles.some(roleId => member.roles.cache.has(roleId));
+    const adminRoles = JSON.parse(settings.admin_roles || '[]');
+    if (adminRoles.length > 0) {
+        return adminRoles.some(roleId => member.roles.cache.has(roleId));
     }
     
     return false;
@@ -103,11 +65,11 @@ const ReviewSteps = {
 
 // Create review menu embed
 const createReviewEmbed = async (guildId, step = ReviewSteps.RATING, reviewData = {}) => {
-    const settings = await Settings.findOne({ guildId }) || new Settings({ guildId });
+    const settings = await getSettings(guildId);
     
     const embed = new EmbedBuilder()
-        .setColor(settings.embedColor)
-        .setTitle(settings.embedTitle)
+        .setColor(settings.embed_color)
+        .setTitle(settings.embed_title)
         .setTimestamp();
 
     switch (step) {
@@ -131,7 +93,7 @@ const createReviewEmbed = async (guildId, step = ReviewSteps.RATING, reviewData 
 
 // Create action rows for different steps
 const createActionRow = async (guildId, step) => {
-    const settings = await Settings.findOne({ guildId }) || new Settings({ guildId });
+    const settings = await getSettings(guildId);
     
     switch (step) {
         case ReviewSteps.RATING:
@@ -170,7 +132,8 @@ const createActionRow = async (guildId, step) => {
                 );
         
         case ReviewSteps.PRODUCT:
-            if (!settings.products || settings.products.length === 0) {
+            const products = JSON.parse(settings.products || '[]');
+            if (!products || products.length === 0) {
                 return new ActionRowBuilder()
                     .addComponents(
                         new ButtonBuilder()
@@ -181,7 +144,7 @@ const createActionRow = async (guildId, step) => {
                     );
             }
             
-            const options = settings.products.slice(0, 25).map((product, index) => 
+            const options = products.slice(0, 25).map((product, index) => 
                 new StringSelectMenuOptionBuilder()
                     .setLabel(product)
                     .setValue(`product_${index}`)
@@ -205,8 +168,8 @@ const createActionRow = async (guildId, step) => {
 client.once('ready', async () => {
     console.log(`Bot is ready! Logged in as ${client.user.tag}`);
     
-    // Connect to MongoDB
-    await connectDB();
+    // Initialize database
+    await initDatabase();
     
     // Register slash commands
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN);
@@ -271,11 +234,9 @@ const handleSlashCommand = async (interaction) => {
                 return interaction.reply({ content: 'Please select a text channel.', ephemeral: true });
             }
             
-            await Settings.findOneAndUpdate(
-                { guildId: interaction.guild.id },
-                { reviewChannelId: channel.id },
-                { upsert: true }
-            );
+            await updateSettings(interaction.guild.id, {
+                review_channel_id: channel.id
+            });
             
             await interaction.reply({ content: `Review channel has been set to ${channel}`, ephemeral: true });
             break;
@@ -363,13 +324,13 @@ const handleButtonInteraction = async (interaction) => {
             .setCustomId('embed_config_modal')
             .setTitle('Configure Embed Settings');
         
-        const settings = await Settings.findOne({ guildId: interaction.guild.id }) || new Settings({ guildId: interaction.guild.id });
+        const settings = await getSettings(interaction.guild.id);
         
         const titleInput = new TextInputBuilder()
             .setCustomId('embed_title')
             .setLabel('Embed Title')
             .setStyle(TextInputStyle.Short)
-            .setValue(settings.embedTitle)
+            .setValue(settings.embed_title)
             .setMaxLength(256)
             .setRequired(true);
         
@@ -377,7 +338,7 @@ const handleButtonInteraction = async (interaction) => {
             .setCustomId('embed_description')
             .setLabel('Embed Description')
             .setStyle(TextInputStyle.Paragraph)
-            .setValue(settings.embedDescription)
+            .setValue(settings.embed_description)
             .setMaxLength(1000)
             .setRequired(true);
         
@@ -385,7 +346,7 @@ const handleButtonInteraction = async (interaction) => {
             .setCustomId('embed_color')
             .setLabel('Embed Color (Hex)')
             .setStyle(TextInputStyle.Short)
-            .setValue(settings.embedColor)
+            .setValue(settings.embed_color)
             .setPlaceholder('#3498db')
             .setRequired(true);
         
@@ -403,13 +364,14 @@ const handleButtonInteraction = async (interaction) => {
             .setCustomId('products_config_modal')
             .setTitle('Configure Products/Items');
         
-        const settings = await Settings.findOne({ guildId: interaction.guild.id }) || new Settings({ guildId: interaction.guild.id });
+        const settings = await getSettings(interaction.guild.id);
+        const products = JSON.parse(settings.products || '[]');
         
         const productsInput = new TextInputBuilder()
             .setCustomId('products_list')
             .setLabel('Products/Items (one per line)')
             .setStyle(TextInputStyle.Paragraph)
-            .setValue(settings.products.join('\n'))
+            .setValue(products.join('\n'))
             .setPlaceholder('Product 1\nProduct 2\nProduct 3')
             .setMaxLength(2000)
             .setRequired(true);
@@ -425,8 +387,9 @@ const handleSelectMenuInteraction = async (interaction) => {
     if (interaction.customId === 'select_product') {
         const selectedValue = interaction.values[0];
         const productIndex = parseInt(selectedValue.split('_')[1]);
-        const settings = await Settings.findOne({ guildId: interaction.guild.id });
-        const product = settings.products[productIndex];
+        const settings = await getSettings(interaction.guild.id);
+        const products = JSON.parse(settings.products || '[]');
+        const product = products[productIndex];
         
         const userId = interaction.user.id;
         const reviewData = client.activeReviews.get(userId);
@@ -479,15 +442,11 @@ const handleModalSubmit = async (interaction) => {
             return interaction.reply({ content: 'Invalid hex color format. Please use format like #3498db', ephemeral: true });
         }
         
-        await Settings.findOneAndUpdate(
-            { guildId: interaction.guild.id },
-            { 
-                embedTitle: title,
-                embedDescription: description,
-                embedColor: color
-            },
-            { upsert: true }
-        );
+        await updateSettings(interaction.guild.id, {
+            embed_title: title,
+            embed_description: description,
+            embed_color: color
+        });
         
         await interaction.reply({ content: 'Embed settings have been updated successfully!', ephemeral: true });
     }
@@ -504,11 +463,9 @@ const handleModalSubmit = async (interaction) => {
             return interaction.reply({ content: 'Maximum 25 products allowed due to Discord limitations.', ephemeral: true });
         }
         
-        await Settings.findOneAndUpdate(
-            { guildId: interaction.guild.id },
-            { products },
-            { upsert: true }
-        );
+        await updateSettings(interaction.guild.id, {
+            products: JSON.stringify(products)
+        });
         
         await interaction.reply({ content: `Successfully updated product list with ${products.length} items!`, ephemeral: true });
     }
@@ -518,7 +475,7 @@ const handleModalSubmit = async (interaction) => {
 const submitReview = async (interaction, reviewData) => {
     try {
         // Save review to database
-        const review = new Review({
+        const review = await saveReview({
             userId: interaction.user.id,
             userName: reviewData.userName,
             guildId: reviewData.guildId,
@@ -527,23 +484,21 @@ const submitReview = async (interaction, reviewData) => {
             product: reviewData.product
         });
         
-        await review.save();
-        
         // Get settings for review channel
-        const settings = await Settings.findOne({ guildId: interaction.guild.id });
+        const settings = await getSettings(interaction.guild.id);
         
-        if (settings && settings.reviewChannelId) {
-            const reviewChannel = await client.channels.fetch(settings.reviewChannelId);
+        if (settings && settings.review_channel_id) {
+            const reviewChannel = await client.channels.fetch(settings.review_channel_id);
             
             if (reviewChannel) {
                 const stars = '★'.repeat(reviewData.rating) + '☆'.repeat(5 - reviewData.rating);
                 
                 const reviewEmbed = new EmbedBuilder()
-                    .setColor(settings.embedColor)
+                    .setColor(settings.embed_color)
                     .setTitle('New Review Submitted')
                     .setDescription(`**Customer:** ${reviewData.userName}\n**Rating:** ${stars} (${reviewData.rating}/5)\n**Product:** ${reviewData.product}\n**Comment:** ${reviewData.comment}`)
                     .setTimestamp()
-                    .setFooter({ text: `Review ID: ${review._id}` });
+                    .setFooter({ text: `Review ID: ${review.id}` });
                 
                 await reviewChannel.send({ embeds: [reviewEmbed] });
             }

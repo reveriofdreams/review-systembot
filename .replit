@@ -4,3 +4,27 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
+packages = ["mongodb"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Discord Review Bot"
+
+[[workflows.workflow]]
+name = "Discord Review Bot"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node index.js"
+
+[workflows.workflow.metadata]
+outputType = "console"
