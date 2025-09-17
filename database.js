@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { drizzle } = require('drizzle-orm/postgres-js');
 const postgres = require('postgres');
 const { pgTable, text, integer, timestamp, serial } = require('drizzle-orm/pg-core');
@@ -9,7 +11,9 @@ if (!connectionString) {
     process.exit(1);
 }
 
-const sql = postgres(connectionString);
+const sql = postgres(connectionString, {
+    ssl: true // ✅ F
+    });
 const db = drizzle(sql);
 
 // Define tables
@@ -29,8 +33,8 @@ const settings = pgTable('settings', {
     guildId: text('guild_id').notNull().unique(),
     reviewChannelId: text('review_channel_id'),
     embedColor: text('embed_color').default('#3498db'),
-    embedTitle: text('embed_title').default('Review System'),
-    embedDescription: text('embed_description').default('Please complete all steps to submit your review.'),
+    embedTitle: text('embed_title').default('評分系統.'),
+    embedDescription: text('embed_description').default('請完成所有步驟以提交您的評價。'),
     products: text('products').default('[]'), // JSON string array
     adminRoles: text('admin_roles').default('[]'), // JSON string array
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -60,8 +64,8 @@ const initDatabase = async () => {
                 guild_id TEXT NOT NULL UNIQUE,
                 review_channel_id TEXT,
                 embed_color TEXT DEFAULT '#3498db',
-                embed_title TEXT DEFAULT 'Review System',
-                embed_description TEXT DEFAULT 'Please complete all steps to submit your review.',
+                embed_title TEXT DEFAULT '評分系統.',
+                embed_description TEXT DEFAULT '請完成所有步驟以提交您的評價。',
                 products TEXT DEFAULT '[]',
                 admin_roles TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -94,8 +98,8 @@ const getSettings = async (guildId) => {
             return newSettings[0] || {
                 guild_id: guildId,
                 embed_color: '#3498db',
-                embed_title: 'Review System',
-                embed_description: 'Please complete all steps to submit your review.',
+                embed_title: '評分系統.',
+                embed_description: 'P請完成所有步驟以提交您的評價。',
                 products: '[]',
                 admin_roles: '[]'
             };
@@ -107,8 +111,8 @@ const getSettings = async (guildId) => {
         return {
             guild_id: guildId,
             embed_color: '#3498db',
-            embed_title: 'Review System',
-            embed_description: 'Please complete all steps to submit your review.',
+            embed_title: '評分系統.',
+            embed_description: '請完成所有步驟以提交您的評價。',
             products: '[]',
             admin_roles: '[]'
         };

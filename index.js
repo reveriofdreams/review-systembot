@@ -85,16 +85,16 @@ const createReviewEmbed = async (guildId, step = ReviewSteps.RATING, reviewData 
 
     switch (step) {
         case ReviewSteps.RATING:
-            embed.setDescription(`**Step 1 of 3:** Please select your rating\n\n${settings.embed_description}`);
+            embed.setDescription(`**第 1 步（共 3 步:** 請選擇您的評分\n\n${settings.embed_description}`);
             break;
         case ReviewSteps.COMMENT:
-            embed.setDescription(`**Step 2 of 3:** Leave your comment\n\n★ **Rating:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n\nPlease click the button below to leave your detailed comment.`);
+            embed.setDescription(`**第 2 步（共 3 步:** 留下您的評論\n\n★ **評分:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n\n請點擊下方按鈕，留下您的詳細留言。`);
             break;
         case ReviewSteps.PRODUCT:
-            embed.setDescription(`**Step 3 of 3:** Select the product/item\n\n★ **Rating:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n💬 **Comment:** ${reviewData.comment.length > 100 ? reviewData.comment.substring(0, 100) + '...' : reviewData.comment}\n\nPlease select the product/item you purchased.`);
+            embed.setDescription(`**第 3 步（共 3 步** 請選擇產品／商品\n\n★ **評分:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n💬 **留言:** ${reviewData.comment.length > 100 ? reviewData.comment.substring(0, 100) + '...' : reviewData.comment}\n\n請選擇您購買的產品／商品。`);
             break;
         case ReviewSteps.COMPLETE:
-            embed.setDescription(`✅ **Review Complete!**\n\n★ **Rating:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n💬 **Comment:** ${reviewData.comment}\n📦 **Product:** ${reviewData.product}\n\nThank you for your review! It has been submitted.`);
+            embed.setDescription(`✅ **評價完成**\n\n★ **評分:** ${reviewData.rating} star${reviewData.rating !== 1 ? 's' : ''}\n💬 **留言:** ${reviewData.comment}\n📦 **商品:** ${reviewData.product}\n\n評價已送出，感謝您的回饋！`);
             embed.setColor('#27ae60'); // Green color for success
             break;
     }
@@ -112,23 +112,23 @@ const createActionRow = async (guildId, step) => {
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('rating_1')
-                        .setLabel('1 Star')
+                        .setLabel('1 星')
                         .setStyle(ButtonStyle.Secondary),
                     new ButtonBuilder()
                         .setCustomId('rating_2')
-                        .setLabel('2 Stars')
+                        .setLabel('2 星')
                         .setStyle(ButtonStyle.Secondary),
                     new ButtonBuilder()
                         .setCustomId('rating_3')
-                        .setLabel('3 Stars')
+                        .setLabel('3 星')
                         .setStyle(ButtonStyle.Secondary),
                     new ButtonBuilder()
                         .setCustomId('rating_4')
-                        .setLabel('4 Stars')
+                        .setLabel('4 星')
                         .setStyle(ButtonStyle.Secondary),
                     new ButtonBuilder()
                         .setCustomId('rating_5')
-                        .setLabel('5 Stars')
+                        .setLabel('5 星')
                         .setStyle(ButtonStyle.Primary)
                 );
         
@@ -137,7 +137,7 @@ const createActionRow = async (guildId, step) => {
                 .addComponents(
                     new ButtonBuilder()
                         .setCustomId('leave_comment')
-                        .setLabel('Leave Comment')
+                        .setLabel('留下評論')
                         .setStyle(ButtonStyle.Primary)
                         .setEmoji('💬')
                 );
@@ -149,7 +149,7 @@ const createActionRow = async (guildId, step) => {
                     .addComponents(
                         new ButtonBuilder()
                             .setCustomId('no_products')
-                            .setLabel('No Products Configured')
+                            .setLabel('尚無設定的產品')
                             .setStyle(ButtonStyle.Secondary)
                             .setDisabled(true)
                     );
@@ -166,7 +166,7 @@ const createActionRow = async (guildId, step) => {
                 .addComponents(
                     new StringSelectMenuBuilder()
                         .setCustomId('select_product')
-                        .setPlaceholder('Choose a product/item')
+                        .setPlaceholder('選擇產品／商品')
                         .addOptions(options)
                 );
         
@@ -231,7 +231,7 @@ const handleSlashCommand = async (interaction) => {
             await interaction.reply({
                 embeds: [embed],
                 components: [actionRow],
-                ephemeral: true
+
             });
             break;
             
@@ -316,11 +316,11 @@ const handleButtonInteraction = async (interaction) => {
         
         const commentInput = new TextInputBuilder()
             .setCustomId('comment_text')
-            .setLabel('Your detailed comment')
+            .setLabel('您的詳細留言')
             .setStyle(TextInputStyle.Paragraph)
             .setMinLength(10)
             .setMaxLength(1000)
-            .setPlaceholder('Please share your detailed experience...')
+            .setPlaceholder('請分享您的詳細經驗...')
             .setRequired(true);
         
         const firstActionRow = new ActionRowBuilder().addComponents(commentInput);
@@ -507,10 +507,10 @@ const submitReview = async (interaction, reviewData) => {
                 
                 const reviewEmbed = new EmbedBuilder()
                     .setColor(settings.embed_color)
-                    .setTitle('New Review Submitted')
-                    .setDescription(`**Customer:** ${reviewData.userName}\n**Rating:** ${stars} (${reviewData.rating}/5)\n**Product:** ${reviewData.product}\n**Comment:** ${reviewData.comment}`)
+                    .setTitle('新評論已提交')
+                    .setDescription(`**顧客:** ${reviewData.userName}\n**評分:** ${stars} (${reviewData.rating}/5)\n**商品:** ${reviewData.product}\n**評論:** ${reviewData.comment}`)
                     .setTimestamp()
-                    .setFooter({ text: `Review ID: ${review.id}` });
+                    .setFooter({ text: `評論編號: ${review.id}` });
                 
                 await reviewChannel.send({ 
                     embeds: [reviewEmbed], 
@@ -532,6 +532,8 @@ const submitReview = async (interaction, reviewData) => {
         await interaction.followUp({ content: 'There was an error submitting your review. Please try again later.', ephemeral: true });
     }
 };
+
+require('./uptime');
 
 // Error handling
 client.on('error', console.error);
