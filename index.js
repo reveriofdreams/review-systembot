@@ -318,7 +318,7 @@ const handleButtonInteraction = async (interaction) => {
             .setCustomId('comment_text')
             .setLabel('您的詳細留言')
             .setStyle(TextInputStyle.Paragraph)
-            .setMinLength(10)
+            .setMinLength(1)
             .setMaxLength(1000)
             .setPlaceholder('請分享您的詳細經驗...')
             .setRequired(true);
